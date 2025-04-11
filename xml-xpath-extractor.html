@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XML XPath Extractor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .upload-section, .xpath-section, .results-section, .file-list-section {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input, button {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        input[type="file"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            padding: 10px 15px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button.secondary {
+            background-color: #95a5a6;
+        }
+        button.secondary:hover {
+            background-color: #7f8c8d;
+        }
+        button.danger {
+            background-color: #e74c3c;
+        }
+        button.danger:hover {
+            background-color: #c0392b;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .file-info {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin: 10px 0;
+        }
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: white;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 5px;
+        }
+        .status {
+            margin-top: 10px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>XML XPath Extractor</h1>
+    
+    <div class="container">
+        <div class="upload-section">
+            <label for="fileInput">Upload XML Files (up to 40 files at once):</label>
+            <input type="file" id="fileInput" accept=".xml" multiple>
+            <div class="button-group">
+                <button id="addButton">Add to File List</button>
+                <button id="clearButton" class="secondary">Clear Selection</button>
+            </div>
+        </div>
+        
+        <div class="file-list-section">
+            <label>Added Files: <span id="fileCount">0</span></label>
+            <div id="fileList" class="file-list">
+                <div class="file-info">No files added yet. Use the upload button above to add files.</div>
+            </div>
+            <div class="button-group">
+                <button id="removeAllButton" class="danger">Remove All Files</button>
+            </div>
+        </div>
+        
+        <div class="xpath-section">
+            <label for="xpathInput">Enter XPath Query:</label>
+            <input type="text" id="xpathInput" placeholder="Example: //book/title">
+            <button id="extractButton">Extract Values</button>
+        </div>
+        
+        <div class="results-section">
+            <h2>Results</h2>
+            <div id="status" class="status">Add XML files and enter an XPath query to extract values.</div>
+            <div id="resultsContainer">
+                <table id="resultsTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Extracted Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('fileInput');
+            const fileList = document.getElementById('fileList');
+            const fileCount = document.getElementById('fileCount');
+            const addButton = document.getElementById('addButton');
+            const clearButton = document.getElementById('clearButton');
+            const removeAllButton = document.getElementById('removeAllButton');
+            const xpathInput = document.getElementById('xpathInput');
+            const extractButton = document.getElementById('extractButton');
+            const resultsTable = document.getElementById('resultsTable');
+            const resultsBody = document.getElementById('resultsBody');
+            const status = document.getElementById('status');
+            
+            // Store all added files
+            let storedFiles = [];
+            let selectedFiles = [];
+            
+            // Update selected files when input changes
+            fileInput.addEventListener('change', function(e) {
+                selectedFiles = Array.from(e.target.files);
+                
+                if (selectedFiles.length > 0) {
+                    status.textContent = `${selectedFiles.length} file(s) selected. Click "Add to File List" to add them.`;
+                } else {
+                    status.textContent = 'No files selected.';
+                }
+            });
+            
+            // Add selected files to stored files
+            addButton.addEventListener('click', function() {
+                if (selectedFiles.length === 0) {
+                    status.innerHTML = '<span class="error">Please select files first.</span>';
+                    return;
+                }
+                
+                // Check if adding these files would exceed the limit
+                if (storedFiles.length + selectedFiles
+.length > 40) {
+                    status.innerHTML = '<span class="error">Cannot add more than 40 files in total. Please remove some files first.</span>';
+                    return;
+                }
+                
+                // Add selected files to stored files
+                selectedFiles.forEach(file => {
+                    // Check for duplicate filenames
+                    const isDuplicate = storedFiles.some(storedFile => storedFile.name === file.name);
+                    
+                    if (!isDuplicate) {
+                        storedFiles.push(file);
+                        
+                        // Add file to UI list
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        
+                        const fileName = document.createElement('span');
+                        fileName.textContent = file.name;
+                        fileItem.appendChild(fileName);
+                        
+                        const removeButton = document.createElement('button');
+                        removeButton.textContent = 'Remove';
+                        removeButton.className = 'secondary';
+                        removeButton.style.padding = '2px 8px';
+                        removeButton.style.fontSize = '0.8em';
+                        
+                        removeButton.addEventListener('click', function() {
+                            // Remove file from stored files
+                            storedFiles = storedFiles.filter(f => f !== file);
+                            // Remove file from UI list
+                            fileList.removeChild(fileItem);
+                            updateFileCount();
+                        });
+                        
+                        fileItem.appendChild(removeButton);
+                        fileList.appendChild(fileItem);
+                    }
+                });
+                
+                // Clear file input
+                fileInput.value = '';
+                selectedFiles = [];
+                
+                updateFileCount();
+                status.textContent = `Added files to list. Total: ${storedFiles.length} file(s).`;
+            });
+            
+            // Clear selected files
+            clearButton.addEventListener('click', function() {
+                fileInput.value = '';
+                selectedFiles = [];
+                status.textContent = 'File selection cleared.';
+            });
+            
+            // Remove all stored files
+            removeAllButton.addEventListener('click', function() {
+                storedFiles = [];
+                fileList.innerHTML = '<div class="file-info">No files added yet. Use the upload button above to add files.</div>';
+                updateFileCount();
+                status.textContent = 'All files removed.';
+                resultsTable.style.display = 'none';
+            });
+            
+            // Extract values when button is clicked
+            extractButton.addEventListener('click', function() {
+                const xpath = xpathInput.value.trim();
+                
+                if (!xpath) {
+                    status.innerHTML = '<span class="error">Please enter an XPath query.</span>';
+                    return;
+                }
+                
+                if (storedFiles.length === 0) {
+                    status.innerHTML = '<span class="error">Please add at least one XML file to the list.</span>';
+                    return;
+                }
+                
+                // Clear previous results
+                resultsBody.innerHTML = '';
+                status.textContent = `Processing ${storedFiles.length} file(s)...`;
+                
+                // Process each file
+                const promises = storedFiles.map(file => processFile(file, xpath));
+                
+                Promise.all(promises)
+                    .then(results => {
+                        results.forEach(result => {
+                            const row = document.createElement('tr');
+                            
+                            const filenameCell = document.createElement('td');
+                            filenameCell.textContent = result.filename;
+                            row.appendChild(filenameCell);
+                            
+                            const valueCell = document.createElement('td');
+                            valueCell.textContent = result.value;
+                            if (result.value === 'Not available' || 
+                                result.value === 'Invalid XML file' || 
+                                result.value === 'Error processing file' ||
+                                result.value === 'Invalid XPath expression') {
+                                valueCell.style.color = '#e74c3c';
+                            }
+                            row.appendChild(valueCell);
+                            
+                            resultsBody.appendChild(row);
+                        });
+                        
+                        resultsTable.style.display = 'table';
+                        status.textContent = `Completed processing ${storedFiles.length} file(s).`;
+                    })
+                    .catch(error => {
+                        status.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+                    });
+            });
+
+            // Process a single file
+            function processFile(file, xpath) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        try {
+                            const parser = new DOMParser();
+                            const xmlDoc = parser.parseFromString(e.target.result, 'text/xml');
+                            
+                            // Check for parsing errors
+                            const parserError = xmlDoc.querySelector('parsererror');
+                            if (parserError) {
+                                resolve({
+                                    filename: file.name,
+                                    value: 'Invalid XML file'
+                                });
+                                return;
+                            }
+                            
+                            // Evaluate XPath
+                            let result;
+                            try {
+                                const nodes = xmlDoc.evaluate(xpath, xmlDoc, null, XPathResult.ANY_TYPE, null);
+                                
+                                // Get the type of result
+                                const resultType = nodes.resultType;
+                                
+                                if (resultType === XPathResult.UNORDERED_NODE_ITERATOR_TYPE || 
+                                    resultType === XPathResult.ORDERED_NODE_ITERATOR_TYPE) {
+                                    // Node result
+                                    let node, values = [];
+                                    while (node = nodes.iterateNext()) {
+                                        values.push(node.textContent);
+                                    }
+                                    result = values.length > 0 ? values.join(', ') : 'Not available';
+                                } else if (resultType === XPathResult.NUMBER_TYPE) {
+                                    // Number result
+                                    result = nodes.numberValue.toString();
+                                } else if (resultType === XPathResult.STRING_TYPE) {
+                                    // String result
+                                    result = nodes.stringValue || 'Not available';
+                                } else if (resultType === XPathResult.BOOLEAN_TYPE) {
+                                    // Boolean result
+                                    result = nodes.booleanValue.toString();
+                                } else {
+                                    result = 'Not available';
+                                }
+                            } catch (xpathError) {
+                                result = 'Invalid XPath expression';
+                            }
+                            
+                            resolve({
+                                filename: file.name,
+                                value: result
+                            });
+                        } catch (error) {
+                            resolve({
+                                filename: file.name,
+                                value: 'Error processing file'
+                            });
+                        }
+                    };
+                    
+                    reader.onerror = function() {
+                        resolve({
+                            filename: file.name,
+                            value: 'Error reading file'
+                        });
+                    };
+                    
+                    reader.readAsText(file);
+                });
+            }
+            
+            // Update file count display
+            function updateFileCount() {
+                fileCount.textContent = storedFiles.length;
+                
+                if (storedFiles.length === 0) {
+                    fileList.innerHTML = '<div class="file-info">No files added yet. Use the upload button above to add files.</div>';
+                } else if (fileList.querySelector('.file-info')) {
+                    fileList.removeChild(fileList.querySelector('.file-info'));
+                }
+            }
+        });
+    </script>
+</body>
+</html>
